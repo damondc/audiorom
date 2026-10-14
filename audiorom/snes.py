@@ -611,23 +611,21 @@ def build_spc(t0_div, pitch, vis_fps=VIS_FPS):
     # ---- commands
     a.lbl('docmd')
     a.mov('a', '$f5')
-    for cid, name in enumerate(('c_reset', 'c_play', 'c_pause', 'c_resume', 'c_end', 'c_wrap')):
+    for cid, name in enumerate(('c_reset', 'c_play', 'c_pause', 'c_resume', 'c_end', 'c_wrap', 'c_seek')):
         a.cmp('a', '#%d' % cid)
         a.beq(name + '_j')
     a.jmp('!c_done')
-    for name in ('c_reset', 'c_play', 'c_pause', 'c_resume', 'c_end', 'c_wrap'):
+    for name in ('c_reset', 'c_play', 'c_pause', 'c_resume', 'c_end', 'c_wrap', 'c_seek'):
         a.lbl(name + '_j')
         a.jmp('!' + name)
     a.lbl('c_reset')
-    dsp(DSP_REGS['KOFF'], 1)
-    a.mov('$f1', '#0')
-    a.mov('x', '#$12'); a.mov('a', '#0')
-    a.lbl('cr_l')
-    a.dec('x'); a.mov('(x)', 'a'); a.cmp('x', '#2'); a.bne('cr_l')
-    a.mov('$1e', '#0')
-    a.mov('$00', '#%d' % (RING & 0xFF)); a.mov('$01', '#%d' % (RING >> 8))
-    dsp(0x02, pitch & 0xFF); dsp(0x03, pitch >> 8)
-    a.mov('$f5', '#0'); a.mov('$f6', '#0')
+    a.call('!reset_body')
+    a.jmp('!c_done')
+    a.lbl('c_seek')                                    # ports 2,3 = new frame counter
+    a.mov('$30', '$f6'); a.mov('$31', '$f7')
+    a.call('!reset_body')
+    a.mov('$0a', '$30'); a.mov('$0b', '$31')
+    a.mov('$f5', '$30'); a.mov('$f6', '$31')
     a.jmp('!c_done')
     a.lbl('c_play')
     dsp(DSP_REGS['KOFF'], 0); dsp(DSP_REGS['KON'], 1)
@@ -650,6 +648,19 @@ def build_spc(t0_div, pitch, vis_fps=VIS_FPS):
     a.call('!updstat')
     a.mov('a', '$1f'); a.mov('$f4', 'a'); a.mov('$07', 'a')
     a.jmp('!main')
+
+    # ---- stop the voice and clear all playback state
+    a.lbl('reset_body')
+    dsp(DSP_REGS['KOFF'], 1)
+    a.mov('$f1', '#0')
+    a.mov('x', '#$12'); a.mov('a', '#0')
+    a.lbl('cr_l')
+    a.dec('x'); a.mov('(x)', 'a'); a.cmp('x', '#2'); a.bne('cr_l')
+    a.mov('$1e', '#0')
+    a.mov('$00', '#%d' % (RING & 0xFF)); a.mov('$01', '#%d' % (RING >> 8))
+    dsp(0x02, pitch & 0xFF); dsp(0x03, pitch >> 8)
+    a.mov('$f5', '#0'); a.mov('$f6', '#0')
+    a.ret()
 
     # ---- timer ticks (X = count): one tick = one BRR block played
     a.lbl('tick')
@@ -701,15 +712,15 @@ ZP16 = dict(PTR=0x00, SEQ=0x03, LASTSEQ=0x04, STATE=0x05, LOOPF=0x06, VISF=0x07,
             STREAM=0x08, NMIF=0x09, PENDING=0x0A, JOY=0x0C, PREV=0x0E, PRESS=0x10,
             FRAME=0x12, SEC=0x14, LASTSEC=0x16, PX=0x18, ACC=0x1A, MM=0x1C, SS=0x1D,
             DMT=0x1E, DMO=0x1F, DST=0x20, DSO=0x21, TMP=0x22, CCOL=0x24, FRAC=0x25,
-            VMASK=0x26, TMPB=0x27, CNT=0x28, PEND=0x29, FRT=0x2A)
+            VMASK=0x26, TMPB=0x27, CNT=0x28, PEND=0x29, FRT=0x2A, TMP2=0x2C)
 BUFB = 0x0800
 
 ROW_HEAD1, ROW_HEAD2, ROW_TITLE, ROW_INFO = 2, 3, 6, 7
-ROW_VIS, COL_VIS = 9, 8
-ROW_BAR, COL_BAR, BAR_LEN = 18, 2, 28
-ROW_TIME, COL_TIME = 20, 9
-ROW_STATE, COL_STATE = 22, 12
-ROW_FLAGS, COL_LOOP, COL_VISF = 24, 5, 19
+ROW_VIS, COL_VIS = 8, 8
+ROW_BAR, COL_BAR, BAR_LEN = 17, 2, 28
+ROW_TIME, COL_TIME = 19, 9
+ROW_STATE, COL_STATE = 21, 12
+ROW_FLAGS, COL_LOOP, COL_VISF = 23, 5, 19
 T_PART0, T_FULL, T_LED, T_SPACE = 1, 9, 16, 32
 
 
@@ -722,7 +733,7 @@ def build_code(P):
     syms = dict(ZP16)
     syms.update(BUFB=BUFB, VISBASE=BANK_VIS << 16, STARTLO=0x0000, STARTBANK=BANK_STREAM,
                 ENDLO=P['end'] & 0xFFFF, ENDBANK=BANK_STREAM + (P['end'] >> 16),
-                TOTAL=P['total_sec'], VFPS=P['vis_fps'])
+                TOTAL=P['total_sec'], VFPS=P['vis_fps'], BPSB=P['bytes_per_sec'])
     a = A816(0x8000, syms)
     nop8 = lambda: [a.nop() for _ in range(8)]
 
@@ -886,6 +897,29 @@ def build_code(P):
     a.lda('#1'); a.sta('STREAM')
     a.rts()
 
+    # ---- do_seek: TMP = target second (16-bit)
+    a.lbl('do_seek')
+    a.assume(1, 0)
+    a.rep('#$20')
+    a.stz('TMP2')
+    a.lda('#STARTLO'); a.sta('PTR')
+    a.sep('#$20'); a.lda('#STARTBANK'); a.sta('PTR+2'); a.rep('#$20')
+    a.ldx('TMP'); a.beq('sk_done')
+    a.lbl('sk_l')
+    a.lda('TMP2'); a.clc(); a.adc('#VFPS'); a.sta('TMP2')
+    a.lda('PTR'); a.clc(); a.adc('#BPSB'); a.sta('PTR')
+    a.bcc('sk_nc')
+    a.sep('#$20'); a.inc('PTR+2'); a.rep('#$20')
+    a.lbl('sk_nc')
+    a.dex(); a.bne('sk_l')
+    a.lbl('sk_done')
+    a.sep('#$20')
+    a.lbl('sk_w'); a.lda('$2140'); a.cmp('LASTSEQ'); a.bne('sk_w')
+    a.rep('#$20'); a.lda('TMP2'); a.sta('$2142'); a.sep('#$20')
+    a.lda('#6'); a.jsr('send_cmd')
+    a.lda('#1'); a.sta('STREAM'); a.sta('PEND')
+    a.rts()
+
     # ---- draw_col: A = height 0..8, Y = byte offset of the column's top cell
     a.lbl('draw_col')
     a.assume(1, 0)
@@ -922,6 +956,18 @@ def build_code(P):
     a.lda('PRESS+1'); a.and_('#$20'); a.beq('nosel')         # SELECT = visualizer
     a.lda('VISF'); a.eor('#1'); a.sta('VISF')
     a.lbl('nosel')
+    a.lda('STATE'); a.beq('noseek')                          # LEFT / RIGHT = seek 5 s
+    a.lda('PRESS+1'); a.and_('#$02'); a.beq('nol')
+    a.rep('#$20'); a.lda('SEC'); a.sec(); a.sbc('#5'); a.bcs('l_ok')
+    a.lda('#0')
+    a.lbl('l_ok')
+    a.sta('TMP'); a.sep('#$20'); a.jsr('do_seek'); a.bra('noseek')
+    a.lbl('nol')
+    a.lda('PRESS+1'); a.and_('#$01'); a.beq('noseek')
+    a.rep('#$20'); a.lda('SEC'); a.clc(); a.adc('#5'); a.sta('TMP')
+    a.inc('a'); a.cmp('#TOTAL'); a.sep('#$20'); a.bcs('noseek')
+    a.jsr('do_seek')
+    a.lbl('noseek')
     a.lda('$2143'); a.and_('#1'); a.beq('noend')             # playback finished
     a.lda('STATE'); a.beq('noend')
     a.jsr('do_stop')
@@ -1083,7 +1129,8 @@ def make_tilemap(title, total_secs, info, head):
     put(ROW_FLAGS, COL_VISF, 'VIS ON  ')
     for c in range(BAR_LEN):
         cells[ROW_BAR * 32 + COL_BAR + c] = T_PART0
-    centre(26, 'START=PLAY/PAUSE')
+    centre(25, 'START=PLAY/PAUSE')
+    centre(26, 'LEFT/RIGHT=SEEK 5 SEC')
     centre(27, 'B=STOP A=LOOP SELECT=VISUAL')
     for r in range(VIS_ROWS):
         pal = 1 if r < 2 else (2 if r < 4 else 3)
@@ -1103,6 +1150,7 @@ def build_rom(stream, vis_rows, title, total_secs, info, t0_div, pitch, vis_fps,
     while not 2 <= (len(spc) + 1) & 0xFF < 0x80:    # port-0 value left by the boot ROM
         spc.append(0)
     P = dict(end=len(stream), total_sec=max(1, int(math.ceil(total_secs))), vis_fps=vis_fps,
+             bytes_per_sec=9 * int(round(T0_HZ / float(t0_div))),
              spc=bytes(spc), spc_len=len(spc), spc_entry=entry, autoplay=autoplay,
              chr=make_chr(), pal=make_palette(),
              tilemap=make_tilemap(title, total_secs, info, head))

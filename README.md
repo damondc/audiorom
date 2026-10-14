@@ -32,6 +32,7 @@ Requires Python 3 and `ffmpeg` on `PATH`. No other dependencies.
 | stop and rewind | A | B |
 | toggle loop | B | A |
 | toggle LED-bar visualizer | C | SELECT |
+| seek back / forward 5 s | - | SNES: LEFT / RIGHT |
 
 ## Notes
 
