@@ -8,5 +8,5 @@ music/
 *.flac
 *.ogg
 *.wav
-# local emulators / cores
+# local test tooling
 emu/

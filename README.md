@@ -36,11 +36,8 @@ Requires Python 3 and `ffmpeg` on `PATH`. No other dependencies.
 
 * The assemblers (Z80, 68000, 6502) are built in; there is no external toolchain.
 * NES: 7-bit output, sample rate capped at ~16 kHz by the per-sample cycle budget; output is
-  linearised against the APU mixer curve. Tested in Mesen, Nestopia and FCEUmm.
-* SMS: Emulicious clips PSG attenuations 0-2; pass `--att-min 3` when targeting
-  it. Real hardware and Genesis Plus GX follow the 2 dB steps.
-* `tools/runcore.c` is a small headless libretro runner used to verify ROMs
-  (audio + screenshot) in CI-less fashion.
+  linearised against the APU mixer curve.
+* SMS: `--att-min N` limits the loudest PSG level used (higher is quieter).
 * Don't commit audio you don't have the rights to; generated ROMs contain it.
 
 ## License

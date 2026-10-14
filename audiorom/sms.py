@@ -41,9 +41,8 @@ def decode(path, rate, start, dur, gain=0):
 
 
 ATT_AMP = [10 ** (-a / 10.0) for a in range(15)] + [0.0]    # amplitude per attenuation
-# Real hardware (and Genesis Plus GX, MAME...) follow the nominal 2 dB steps for
-# attenuations 0..15.  Emulicious clips 0..2 to one level, so for that emulator
-# use --att-min 3 (quieter but clean).
+# The PSG follows nominal 2 dB steps for attenuations 0..15.  --att-min raises
+# the loudest level used (quieter output, less summed-channel clipping).
 ATT_MIN = 0
 TOP = 3 * ATT_AMP[ATT_MIN]            # loudest summed level
 MID = TOP / 2                         # silence
@@ -380,8 +379,8 @@ def main():
                     help='dB of boost before a slow peak limiter; louder but '
                          'pumpier (default 16, 0 = original dynamics)')
     ap.add_argument('--att-min', type=int, default=0, choices=range(0, 8),
-                    help='loudest PSG attenuation to use; 3 for Emulicious, '
-                         'which clips 0..2')
+                    help='loudest PSG attenuation to use (0 = full scale; '
+                         'higher is quieter)')
     ap.add_argument('--wav', help='also write a preview WAV of what the PSG outputs')
     args = ap.parse_args()
     set_att_min(args.att_min)

@@ -5,7 +5,7 @@ SYSTEMS = {
     'sms':     ('audiorom.sms',     'Sega Master System (.sms)'),
     'genesis': ('audiorom.genesis', 'Sega Genesis / Mega Drive (.md)'),
     'nes':     ('audiorom.nes',     'Nintendo NES (.nes)'),
-    'snes':    (None,               'Super Nintendo (.sfc) - not implemented yet'),
+    'snes':    ('audiorom.snes',    'Super Nintendo (.sfc)'),
 }
 
 
