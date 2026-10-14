@@ -50,9 +50,10 @@ substantial portions of the code.
 
 ### Credit
 
-If you use audiorom in a project, video or write-up, please credit it as
-**"audiorom by Damond"** and link to https://github.com/damondc/audiorom.
-This is a request, not a license condition.
+If you use audiorom in a project, video or write-up, a mention of audiorom or
+its author, in whatever form suits you, is appreciated. Link to
+https://github.com/damondc/audiorom if you can. This is a request, not a
+license condition.
 
 ROMs you generate contain the audio you feed in, so their rights are those of
 that audio, not of this tool.
