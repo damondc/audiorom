@@ -255,11 +255,10 @@ BANKVAR, UIPOS = 0xC000, 0xC001
 PREVJ, TICKN, STATE, LOOPF, VISF = 0xC003, 0xC004, 0xC005, 0xC006, 0xC007
 TAP1, TAP2, VFR, VPTR, RESETHL = 0xC008, 0xC009, 0xC00A, 0xC00C, 0xC00E
 HS = 0xC010                                # 8 band heights, stored as 65 + height
-CODE_MAX = 0x800
-CELLTAB = 0x800                            # 64 LED cells x 4 bytes, page aligned
-VISTAB = 0x900                             # LED band levels, 4 bytes per frame
-TICKS = 32                                 # pad / UI ticks per second
-WINDOW = 12                                # double-press window in ticks (~0.4 s)
+CODE_MAX = 0x1000
+CELLTAB = 0x1000                           # 64 LED cells x 4 bytes, page aligned
+VISTAB = 0x1100                            # LED band levels, 4 bytes per frame
+CUR, NEWP, EVENT, SECF, TR, VR, RC = 0xC018, 0xC019, 0xC01A, 0xC01B, 0xC01C, 0xC01D, 0xC01E
 VIS_COL0, VIS_ROW0, VIS_BANDS, VIS_ROWS, VIS_FPS = 8, 7, 8, 8, 16
 LED0 = 66                                  # LED tiles 66..73 (level 1..8)
 S_BAR_ROW, S_TIME_ROW = 16, 18
@@ -286,10 +285,10 @@ def text_tables():
     return bytes(t)                                # 7 strings x 8; see build_code
 
 
-def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_len,
+def build_code(vols, cyc, per_sec, ui_addr, tiles_addr, tiles_len,
                pal_addr, map_addr, ntiles_bytes, pagetab_addr, k_pages, npages,
-               text_addr, vis_base, led):
-    per_tick = per_sec // TICKS
+               text_addr, vis_base, led, rounds, ticks):
+    window = max(2, int(0.4 * ticks))
     a = Asm(0)
     # reset / interrupt vectors
     a.db(0xF3, 0xED, 0x56)                    # di ; im 1
@@ -343,7 +342,11 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     for var in (PREVJ, STATE, LOOPF, TAP1, TAP2, RESETHL):
         a.db(0x32); a.w(var)
     a.db(0x3E, 1, 0x32); a.w(VISF)
-    a.db(0x3E, TICKS, 0x32); a.w(TICKN)
+    a.db(0x3E, ticks, 0x32); a.w(TICKN)
+    a.db(0x3E, rounds, 0x32); a.w(RC)
+    a.db(0xAF)
+    for var in (TR, VR, EVENT, SECF):
+        a.db(0x32); a.w(var)
     a.db(0x21); a.w(vis_base)
     a.db(0x22); a.w(VFR)
     a.db(0x21); a.w(CELLTAB)
@@ -357,78 +360,199 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0xE5)                                # push hl  (saved position)
     a.abs(0xC3, 'idle')
 
-    # ---- the sample loop: every path through is cycle-counted ----
-    a.label('s')
-    a.db(0x7E, 0xD3, 0x7F, 0x23)              # ld a,(hl) ; out ($7f),a ; inc hl
-    a.db(0x7E, 0xD3, 0x7F, 0x23)              # second volume write
-    a.db(0xCB, 0x74)                          # bit 6,h
-    a.jr(0x20, 'bank')                        # jr nz,bank
-    a.label('back')
-    if led:                                   # one LED cell per sample (shadow registers)
-        a.db(0xD9)                            # exx
-        a.db(0x2A); a.w(VPTR)                 # ld hl,(VPTR)
-        a.db(0x5E, 0x2C, 0x56, 0x2C, 0x4E, 0x2C, 0x46, 0x2C)   # e,d,c,b <- (hl), inc l
-        a.db(0x22); a.w(VPTR)                 # ld (VPTR),hl
-        a.db(0x26, HS >> 8, 0x69)             # ld h,>HS ; ld l,c
-        a.db(0x7E, 0xB8, 0x9F, 0x2F, 0xA0, 0x4F)   # ld a,(hl);cp b;sbc a,a;cpl;and b;ld c,a
-        a.db(0x7B, 0xD3, 0xBF, 0x7A, 0xD3, 0xBF)   # address low/high
-        a.db(0x79, 0xD3, 0xBE, 0xAF, 0xD3, 0xBE)   # tile, 0
-        a.db(0xD9)                            # exx
-    a.db(0x0B, 0x78, 0xB1)                    # dec bc ; ld a,b ; or c
-    a.jr(0x28, 'tick')                        # jr z,tick
-    a.db(0x3E, cyc_pad_n)                     # ld a,N
-    a.label('pad')
-    a.db(0x3D)                                # dec a
-    a.jr(0x20, 'pad')
-    a.db(*([0x00] * nops))
-    a.jr(0x18, 's')
+    # ---- the sample loop: 8 rounds of (LED half, work half); every half is exactly
+    # `cyc` cycles, so tick work is spread over the work halves and never stalls audio
+    T = [0]
 
-    a.label('bank')                           # crossed a 16KB page
-    a.db(0x3A); a.w(BANKVAR)                  # ld a,(BANKVAR)
-    a.db(0x3C, 0x32); a.w(BANKVAR)            # inc a ; ld (BANKVAR),a
-    a.db(0x32); a.w(0xFFFF)                   # ld ($FFFF),a
-    a.db(0x26, 0x80)                          # ld h,$80
-    a.jr(0x18, 'back')
+    def i(t_, *b_):
+        a.db(*b_)
+        T[0] += t_
 
-    # ---- tick: 32 times a second ------------------------------------------
-    a.label('tick')
-    a.db(0xE5)                                # push hl
+    def lo_hi(v):
+        return v & 0xFF, v >> 8
+
+    def lda_nn(v):
+        i(13, 0x3A, *lo_hi(v))
+
+    def sta_nn(v):
+        i(13, 0x32, *lo_hi(v))
+
+    def delay(c):
+        """Emit code that takes exactly c cycles (nop 4, cp 0 = 7, ld a,i = 9, loops)."""
+        assert c >= 0, 'cycle budget exceeded by %d' % -c
+        best = None
+        for n in range(0, 40):
+            base = 13 * n + 2 if n else 0
+            for b_ in range(0, 4):
+                for d_ in range(0, 4):
+                    rem = c - base - 7 * b_ - 9 * d_
+                    if rem >= 0 and rem % 4 == 0:
+                        size = (4 if n else 0) + rem // 4 + 2 * b_ + 2 * d_
+                        if best is None or size < best[0]:
+                            best = (size, n, rem // 4, b_, d_)
+        assert best, 'cannot delay %d cycles' % c
+        _, n, nops, cps, lais = best
+        if n:
+            a.db(0x06, n, 0x10, 0xFE)          # ld b,n ; djnz $
+        for _ in range(cps):
+            a.db(0xFE, 0x00)                   # cp 0
+        for _ in range(lais):
+            a.db(0xED, 0x57)                   # ld a,i
+        a.db(*([0x00] * nops))
+
+    def psg_and_bank():
+        for _ in range(2):
+            i(7, 0x7E); i(11, 0xD3, 0x7F); i(6, 0x23)
+        i(8, 0xCB, 0x74)                       # bit 6,h
+        a.abs(0xC4, 'bankfix'); T[0] += 10      # call nz,bankfix
+
+    def led_step():
+        i(4, 0xD9)                             # exx
+        i(16, 0x2A, *lo_hi(VPTR))              # ld hl,(VPTR)
+        for r_ in (0x5E, 0x56, 0x4E, 0x46):    # ld e/d/c/b,(hl) ; inc l
+            i(7, r_); i(4, 0x2C)
+        i(16, 0x22, *lo_hi(VPTR))              # ld (VPTR),hl
+        i(7, 0x26, HS >> 8); i(4, 0x69)        # ld h,>HS ; ld l,c
+        i(7, 0x7E); i(4, 0xB8); i(4, 0x9F); i(4, 0x2F); i(4, 0xA0); i(4, 0x4F)
+        i(4, 0x7B); i(11, 0xD3, 0xBF); i(4, 0x7A); i(11, 0xD3, 0xBF)
+        i(4, 0x79); i(11, 0xD3, 0xBE); i(4, 0xAF); i(11, 0xD3, 0xBE)
+        i(4, 0xD9)                             # exx
+
+    uid = [0]
+
+    def gated(flag, body):
+        """Run body only when `flag` is non-zero; both paths take the same time."""
+        uid[0] += 1
+        skip, done = 'sk%d' % uid[0], 'dn%d' % uid[0]
+        lda_nn(flag); i(4, 0xB7)
+        a.jr(0x28, skip); T[0] += 7            # jr z,skip (not taken)
+        t0 = T[0]
+        body()
+        used = T[0] - t0
+        a.jr(0x18, done); T[0] += 12
+        a.label(skip)
+        delay(used + 7)                        # taken jr costs 12 vs 7, jr done 12
+        a.label(done)
+
+    def ld_ix_vfr():
+        i(20, 0xDD, 0x2A, *lo_hi(VFR))         # ld ix,(VFR)
+
+    def unpack(off, dst):
+        i(19, 0xDD, 0x7E, off)                 # ld a,(ix+off)
+        i(4, 0x4F)                             # ld c,a
+        i(16, 0x0F, 0x0F, 0x0F, 0x0F)          # rrca x4
+        i(7, 0xE6, 0x0F); i(7, 0xC6, 65)
+        sta_nn(HS + dst)
+        i(4, 0x79); i(7, 0xE6, 0x0F); i(7, 0xC6, 65)
+        sta_nn(HS + dst + 1)
+
+    def u_p1():
+        i(11, 0xDB, 0xDC); i(4, 0x2F); i(7, 0xE6, 0x3C)   # in a,($DC);cpl;and $3C
+        sta_nn(CUR); i(4, 0x4F)
+        lda_nn(PREVJ); i(4, 0x2F); i(4, 0xA1)              # cpl ; and c
+        sta_nn(NEWP)
+
+    def u_p2():
+        lda_nn(NEWP); i(7, 0xFE, 0x01); i(4, 0x9F); i(4, 0x57)   # cp 1;sbc a,a;ld d,a
+        i(4, 0x2F); sta_nn(EVENT)
+        lda_nn(PREVJ); i(4, 0x5F); lda_nn(CUR)             # ld e,a
+        i(4, 0xAB); i(4, 0xA2); i(4, 0xAB)                 # xor e ; and d ; xor e
+        sta_nn(PREVJ)
+
+    def u_p3():
+        for tap in (TAP1, TAP2):
+            lda_nn(tap); i(7, 0xD6, 0x01); i(7, 0xCE, 0x00); sta_nn(tap)   # sub 1 ; adc a,0
+
+    def u_v1():
+        ld_ix_vfr(); unpack(0, 0); unpack(1, 2)
+
+    def u_v2():
+        ld_ix_vfr(); unpack(2, 4); unpack(3, 6)
+
+    def u_adv():
+        lda_nn(TICKN); i(7, 0xE6, 0x01); i(4, 0x87); i(4, 0x87); i(4, 0x4F)
+        i(20, 0xED, 0x5B, *lo_hi(VFR))         # ld de,(VFR)
+        i(4, 0x7B); i(4, 0x81); i(4, 0x5F)     # ld a,e ; add a,c ; ld e,a
+        i(4, 0x7A); i(7, 0xCE, 0x00); i(4, 0x57)
+        i(20, 0xED, 0x53, *lo_hi(VFR))         # ld (VFR),de
+        lda_nn(TICKN); i(4, 0x3D); i(4, 0x47); i(7, 0xFE, 0x01); i(4, 0x9F); i(4, 0x4F)
+        i(7, 0xE6, ticks); i(4, 0xB0); sta_nn(TICKN)
+        i(4, 0x79); sta_nn(SECF)
+
+    def u_ev():
+        lda_nn(EVENT); i(4, 0xB7); a.abs(0xC2, 'evt'); T[0] += 10
+        lda_nn(SECF); i(4, 0xB7); a.abs(0xC2, 'secevt'); T[0] += 10
+
+    def u_rc():                                # not gated: sets the tick-round flag
+        lda_nn(RC); i(4, 0x3D); i(4, 0x47); i(7, 0xFE, 0x01); i(4, 0x9F); i(4, 0x4F)
+        i(7, 0xE6, rounds); i(4, 0xB0); sta_nn(RC)
+        i(4, 0x79); sta_nn(TR)
+        i(4, 0x47); lda_nn(VISF); i(4, 0xA0); sta_nn(VR)    # VR = TR & VISF, every round
+
+    work = [u_rc,
+            lambda: gated(TR, u_p1), lambda: gated(TR, u_p2), lambda: gated(TR, u_p3),
+            (lambda: gated(VR, u_v1)) if led else (lambda: None),
+            (lambda: gated(VR, u_v2)) if led else (lambda: None),
+            lambda: gated(TR, u_adv), lambda: gated(TR, u_ev)]
+    for k in range(8):
+        T[0] = 0                               # --- LED half (odd sample)
+        if k == 0:
+            a.label('s')
+        psg_and_bank()
+        if led:
+            led_step()
+        delay(cyc - T[0])
+        T[0] = 0                               # --- work half (even sample)
+        psg_and_bank()
+        work[k]()
+        last = k == 7
+        delay(cyc - T[0] - (10 if last else 0))
+        if last:
+            a.abs(0xC3, 's')
+
+    a.label('bankfix')                         # crossed a 16KB page
+    a.db(0x3A); a.w(BANKVAR)
+    a.db(0x3C, 0x32); a.w(BANKVAR)
+    a.db(0x32); a.w(0xFFFF)
+    a.db(0x26, 0x80)                           # ld h,$80
+    a.db(0xC9)
+
+    # ---- pad event: a new button press (runs in a work half; may stall) --------
+    a.label('evt')
+    a.db(0xE5)                                 # push hl
     a.abs(0xCD, 'padpoll')
     a.abs(0xCD, 'fixhl')
-    a.db(0x3A); a.w(STATE)                    # ld a,(STATE)
-    a.db(0x3D)                                # dec a
-    a.abs(0xC2, 'idle')                       # jp nz,idle   (paused / stopped)
-    a.db(0x3A); a.w(TICKN)
-    a.db(0xCB, 0x47)                          # bit 0,a
-    a.jr(0x20, 'nov')
-    a.abs(0xCD, 'visupd')                     # every other tick: 16 frames/s
-    a.label('nov')
-    a.db(0x3A); a.w(TICKN)
-    a.db(0x3D, 0x32); a.w(TICKN)              # dec a ; ld (TICKN),a
-    a.jr(0x20, 'resume')
-    a.db(0x3E, TICKS, 0x32); a.w(TICKN)
-    a.db(0x2A); a.w(UIPOS)                    # ld hl,(UIPOS)
-    a.db(0x7E, 0xFE, 0xFF)                    # ld a,(hl) ; cp $FF
+    a.db(0xAF, 0x32); a.w(EVENT)
+    a.db(0x3A); a.w(STATE)
+    a.db(0x3D)
+    a.abs(0xC2, 'idle')                        # paused / stopped
+    a.abs(0xC3, 'resume')
+
+    # ---- once a second: clock and progress bar (may stall) ----------------------
+    a.label('secevt')
+    a.db(0xE5)                                 # push hl
+    a.db(0xAF, 0x32); a.w(SECF)
+    a.db(0x2A); a.w(UIPOS)                     # ld hl,(UIPOS)
+    a.db(0x7E, 0xFE, 0xFF)                     # ld a,(hl) ; cp $FF
     a.jr(0x28, 'songend')
     a.abs(0xCD, 'drawentry')
     a.db(0x22); a.w(UIPOS)
     a.label('resume')
-    a.db(0xE1)                                # pop hl
-    a.db(0x01); a.w(per_tick)                 # ld bc,per_tick
+    a.db(0xE1)                                 # pop hl
     a.abs(0xC3, 's')
 
     a.label('songend')
     a.db(0x3A); a.w(LOOPF)
-    a.db(0xB7)                                # or a
+    a.db(0xB7)                                 # or a
     a.jr(0x20, 'loopit')
-    a.abs(0xCD, 'dostop')                     # no loop: stop at the end
+    a.abs(0xCD, 'dostop')                      # no loop: stop at the end
     a.abs(0xCD, 'fixhl')
     a.abs(0xC3, 'idle')
-    a.label('loopit')                         # loop: start over without stopping
+    a.label('loopit')                          # loop: start over without stopping
     a.db(0x3E, DATA_BANK0, 0x32); a.w(BANKVAR)
     a.db(0x32); a.w(0xFFFF)
     a.db(0x21); a.w(0x8000)
-    a.db(0xE3)                                # ex (sp),hl
+    a.db(0xE3)                                 # ex (sp),hl
     a.db(0x21); a.w(vis_base)
     a.db(0x22); a.w(VFR)
     a.db(0x06, 0)
@@ -445,12 +569,20 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.label('idle_l')
     a.abs(0xCD, 'waitframe')
     a.abs(0xCD, 'waitframe')
+    a.abs(0xCD, 'taptick')
     a.abs(0xCD, 'padpoll')
     a.abs(0xCD, 'fixhl')
     a.db(0x3A); a.w(STATE)
     a.db(0x3D)                                # dec a
     a.jr(0x20, 'idle_l')
     a.jr(0x18, 'resume')
+
+    a.label('taptick')                         # saturating decrement of the tap timers
+    for tap in (TAP1, TAP2):
+        a.db(0x3A); a.w(tap)
+        a.db(0xD6, 1, 0xCE, 0)                 # sub 1 ; adc a,0
+        a.db(0x32); a.w(tap)
+    a.db(0xC9)
 
     a.label('waitframe')
     a.db(0xDB, 0xBF, 0x07)                    # in a,($BF) ; rlca
@@ -468,16 +600,6 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
 
     # ---- pad: Button 1 = play/pause (2x = stop), Button 2 = loop (2x = visual)
     a.label('padpoll')
-    a.db(0x3A); a.w(TAP1)
-    a.db(0xB7)
-    a.jr(0x28, 'pp1')
-    a.db(0x3D, 0x32); a.w(TAP1)
-    a.label('pp1')
-    a.db(0x3A); a.w(TAP2)
-    a.db(0xB7)
-    a.jr(0x28, 'pp2')
-    a.db(0x3D, 0x32); a.w(TAP2)
-    a.label('pp2')
     a.db(0xDB, 0xDC, 0x2F, 0xE6, 0x3C, 0x47)  # in a,($DC);cpl;and $3C;ld b,a
     a.db(0x3A); a.w(PREVJ)
     a.db(0x2F, 0xA0, 0x4F)                    # cpl ; and b ; ld c,a   new presses
@@ -494,7 +616,7 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0x3E, 1)
     a.label('b1set')
     a.db(0x32); a.w(STATE)
-    a.db(0x3E, WINDOW, 0x32); a.w(TAP1)
+    a.db(0x3E, window, 0x32); a.w(TAP1)
     a.abs(0xCD, 'drawlabel')
     a.jr(0x18, 'nb1')
     a.label('b1dbl')
@@ -522,7 +644,7 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0xC1)                                # pop bc
     a.jr(0x18, 'nb2')
     a.label('b2one')
-    a.db(0x3E, WINDOW, 0x32); a.w(TAP2)
+    a.db(0x3E, window, 0x32); a.w(TAP2)
     a.db(0xC1)                                # pop bc
     a.label('nb2')
     # seek: LEFT (bit 2) / RIGHT (bit 3)
@@ -559,7 +681,7 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0xEB)                                # ex de,hl
     a.abs(0xCD, 'drawentry')
     a.db(0x22); a.w(UIPOS)
-    a.db(0x3E, TICKS, 0x32); a.w(TICKN)
+    a.db(0x3E, ticks, 0x32); a.w(TICKN)
     a.db(0xC9)
 
     # ---- stop: back to 00:00, page 0 -----------------------------------------
@@ -575,35 +697,9 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0x21); a.w(ui_addr)
     a.abs(0xCD, 'drawentry')
     a.db(0x22); a.w(UIPOS)
-    a.db(0x3E, TICKS, 0x32); a.w(TICKN)
+    a.db(0x3E, ticks, 0x32); a.w(TICKN)
     a.abs(0xCD, 'clearleds')
     a.abs(0xC3, 'drawlabel')
-
-    # ---- LED heights from the level table (16 frames/s) ----------------------
-    a.label('visupd')
-    a.db(0x2A); a.w(VFR)                      # ld hl,(VFR)
-    a.db(0x11); a.w(HS)                       # ld de,HS
-    a.db(0x3A); a.w(VISF)
-    a.db(0xB7)
-    a.jr(0x28, 'vclr')
-    a.db(0x06, 4)
-    a.label('vu')
-    a.db(0x7E, 0x23, 0x4F)                    # ld a,(hl);inc hl;ld c,a
-    a.db(0x0F, 0x0F, 0x0F, 0x0F, 0xE6, 0x0F, 0xC6, 65, 0x12, 0x13)   # hi nibble
-    a.db(0x79, 0xE6, 0x0F, 0xC6, 65, 0x12, 0x13)                      # lo nibble
-    a.jr(0x10, 'vu')
-    a.db(0x22); a.w(VFR)
-    a.db(0xC9)
-    a.label('vclr')
-    a.db(0x01); a.w(4)
-    a.db(0x09)                                # add hl,bc
-    a.db(0x22); a.w(VFR)
-    a.db(0x21); a.w(HS)
-    a.db(0x06, VIS_BANDS, 0x3E, 65)
-    a.label('vc')
-    a.db(0x77, 0x23)
-    a.jr(0x10, 'vc')
-    a.db(0xC9)
 
     # ---- erase the LED grid and reset the heights ------------------------------
     a.label('clearleds')
@@ -720,18 +816,32 @@ def main():
     if want > fit:
         print('song too long for 4MB at %d Hz; using %d Hz' % (want, fit))
     rate = min(want, fit, MAX_AUTO_RATE)
-    # cycle budget per sample -> exact rate; the LED cell update needs spare cycles
+    # cycle budget per sample -> exact rate
     cyc = -(-Z80_HZ // rate)                       # round up: never exceed rate
-    led = cyc - FIXED >= LED_STEP + 4
-    if not led:
-        print('rate too high for the LED bars; they are left out (use <= %d Hz)' %
-              int(Z80_HZ / (FIXED + LED_STEP + 4)))
-    step = LED_STEP if led else 0
-    n = (cyc - FIXED - step) // 16
-    nops = -(-(cyc - FIXED - step - 16 * n) // 4)
-    cyc = FIXED + step + 16 * n + 4 * nops
     real_rate = Z80_HZ / cyc
     per_sec = round(real_rate)
+    # tick structure: a round is 16 samples; a tick is `rounds` rounds; `ticks` per second
+    best = None
+    for r_ in range(16, 33):
+        for t_ in range(24, 41):
+            err = abs(16 * r_ * t_ - per_sec) / float(per_sec)
+            if best is None or err < best[0] - 1e-9:
+                best = (err, r_, t_)
+    _, rounds, ticks = best
+
+    def feasible(with_led):
+        try:
+            build_code(start_state(), cyc, per_sec, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0,
+                       VISTAB, with_led, rounds, ticks)
+            return True
+        except AssertionError as e:
+            if 'cycle budget' in str(e):
+                return False
+            raise
+    led = feasible(True)
+    if not led:
+        print('rate too high for the LED bars; they are left out')
+        assert feasible(False), 'rate too high'
     globals()['GLITCH_F'] = 24.0 / cyc   # time between the two writes, as a fraction
     assert dur * per_sec * 2 <= room, 'cannot fit; use --duration'
     print('%d cycles/sample -> %.1f Hz, %.1fs' % (cyc, real_rate, dur))
@@ -774,9 +884,9 @@ def main():
                           sec * BAR_LEN // max(secs, 1))
     assert len(b1) < 0x3FF0, 'song too long for UI table'
 
-    code = build_code(start_state(), real_rate, per_sec, n, nops, ui_addr, tiles_addr,
+    code = build_code(start_state(), cyc, per_sec, ui_addr, tiles_addr,
                       len(tiles), pal_addr, map_addr, len(tiles),
-                      pagetab_addr, k_pages, npages, text_addr, VISTAB, led)
+                      pagetab_addr, k_pages, npages, text_addr, VISTAB, led, rounds, ticks)
     bank0 = bytearray(BANK_SIZE)
     bank0[:len(code)] = code
     bank0[CELLTAB:CELLTAB + 256] = cell_table()
