@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+# generated ROMs and previews live here; never commit them
+roms/
+# source audio (never commit copyrighted music)
+music/
+*.mp3
+*.flac
+*.ogg
+*.wav
+# local emulators / cores
+emu/
