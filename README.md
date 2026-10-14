@@ -26,8 +26,16 @@ Requires Python 3 and `ffmpeg` on `PATH`. No other dependencies.
 
 ### Player controls
 
-The Master System player starts playing at power-on; its only control is D-pad
-LEFT / RIGHT, which seeks 5 seconds back / forward.
+The Master System player has two buttons, so it uses double presses:
+
+| SMS button | single press | double press |
+|------------|--------------|--------------|
+| 1 | play / pause | stop and rewind |
+| 2 | loop on / off | LED visualizer on / off |
+| D-pad LEFT / RIGHT | seek 5 s back / forward | |
+
+It waits stopped at power-on. Its LED bars need spare CPU cycles, so the
+default rate is 11025 Hz; above about 12.9 kHz the bars are left out.
 
 | action | Genesis | NES / SNES |
 |--------|---------|------------|
@@ -44,7 +52,8 @@ LEFT / RIGHT, which seeks 5 seconds back / forward.
   linearised against the APU mixer curve.
 * SNES: 32 kHz mono BRR at best (about 18 KB/s); `--rate` picks 128000/N Hz. Songs up to
   about 3.5 minutes fit a 4 MB cartridge at 32 kHz; longer songs automatically use a lower rate.
-* SMS: `--att-min N` limits the loudest PSG level used (higher is quieter).
+* SMS: `--att-min N` limits the loudest PSG level used (higher is quieter). The default sample
+  rate is 11025 Hz so the LED-bar update fits between samples.
 * Don't commit audio you don't have the rights to; generated ROMs contain it.
 
 ## License
