@@ -26,13 +26,16 @@ Requires Python 3 and `ffmpeg` on `PATH`. No other dependencies.
 
 ### Player controls
 
+The Master System player starts playing at power-on; its only control is D-pad
+LEFT / RIGHT, which seeks 5 seconds back / forward.
+
 | action | Genesis | NES / SNES |
 |--------|---------|------------|
 | play / pause | START | START |
 | stop and rewind | A | B |
 | toggle loop | B | A |
 | toggle LED-bar visualizer | C | SELECT |
-| seek back / forward 5 s | - | SNES: LEFT / RIGHT |
+| seek back / forward 5 s | LEFT / RIGHT | LEFT / RIGHT |
 
 ## Notes
 

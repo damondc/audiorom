@@ -22,6 +22,7 @@ YM_SLOT = 1008 / 15.0                     # one YM2612 output sample = 67.2 Z80 
 RAM = 0xFF0000
 FRAMECNT, RELOAD, TBLPTR, STATE, PREV = RAM, RAM + 2, RAM + 4, RAM + 8, RAM + 9
 LOOP, VIS, VISDIV, VISPTR = RAM + 10, RAM + 11, RAM + 12, RAM + 14
+PREVLR = RAM + 18                         # left/right edge detection
 CMD = 0xA01FFD                            # command byte in Z80 RAM (0 play, 1 pause, 2 stop)
 LOOPF = 0xA01FFC                          # loop flag in Z80 RAM
 VIS_BARS, VIS_ROWS, VIS_FPS = 16, 8, 30
@@ -148,11 +149,19 @@ def build_z80(start_bank, last_bank, pad):
     a.label('wait')
     a.db(0x3A, 0xFD, 0x1F, 0xB7)               # ld a,($1FFD) ; or a
     a.jr(0x28, 'loop')                         # jr z,loop   (play / resume)
+    a.db(0xFE, 0x03)                           # cp 3
+    a.jr(0x28, 'seek')                         # seek request
     a.db(0xFE, 0x02)                           # cp 2
     a.jr(0x20, 'wait')                         # paused: keep waiting
     a.db(0x3E, start_bank, 0x32, 0xFE, 0x1F)   # stopped: rewind to the start
     a.abs(0xCD, 'setbank')
     a.db(0x21, 0x00, 0x80)                     # ld hl,$8000
+    a.jr(0x18, 'wait')
+    a.label('seek')                            # bank in $1FFB, command to resume in $1FFA
+    a.db(0x3A, 0xFB, 0x1F, 0x32, 0xFE, 0x1F)  # ld a,($1FFB) ; ld ($1FFE),a
+    a.abs(0xCD, 'setbank')
+    a.db(0x21, 0x00, 0x80)                     # ld hl,$8000
+    a.db(0x3A, 0xFA, 0x1F, 0x32, 0xFD, 0x1F)  # ld a,($1FFA) ; ld ($1FFD),a
     a.jr(0x18, 'wait')
     a.label('endsong')                         # end marker reached
     a.db(0x3A, 0xFC, 0x1F, 0xB7)               # ld a,($1FFC) ; or a   loop flag
@@ -245,11 +254,19 @@ def build_z80_hybrid(start_bank, last_bank, pad, psg_init):
     a.label('wait')
     a.db(0x3A, 0xFD, 0x1F, 0xB7)
     a.abs(0xCA, 'loop')                        # jp z,loop
+    a.db(0xFE, 0x03)
+    a.jr(0x28, 'seek')                         # seek request
     a.db(0xFE, 0x02)
     a.jr(0x20, 'wait')
     a.db(0x3E, start_bank, 0x32, 0xFE, 0x1F)   # stopped: rewind
     a.abs(0xCD, 'setbank')
     a.db(0x21, 0x00, 0x80)
+    a.jr(0x18, 'wait')
+    a.label('seek')
+    a.db(0x3A, 0xFB, 0x1F, 0x32, 0xFE, 0x1F)
+    a.abs(0xCD, 'setbank')
+    a.db(0x21, 0x00, 0x80)
+    a.db(0x3A, 0xFA, 0x1F, 0x32, 0xFD, 0x1F)
     a.jr(0x18, 'wait')
     a.label('nextbank')
     a.db(0x3A, 0xFE, 0x1F, 0x3C)
@@ -312,6 +329,7 @@ def md_tilemap(title, total, info):
         w[sms.TIME_ROW * 32 + sms.TIME_COL + 8 + i] = t
     put(22, info)
     put(24, 'START=PLAY/PAUSE')
+    put(25, 'LEFT/RIGHT=SEEK 5 SEC')
     put(26, 'A=STOP  B=LOOP  C=VISUAL')
     return struct.pack('>%dH' % len(w), *w)
 
@@ -485,6 +503,7 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     m.move('l', '#%d' % (ui_addr + 16), V(TBLPTR))
     m.move('b', '#%d' % (0 if autoplay else 2), V(STATE))
     m.move('b', '#$0F', V(PREV))                         # ignore buttons held at boot
+    m.move('b', '#$0C', V(PREVLR))
     m.move('b', '#0', V(LOOP))
     m.move('b', '#1', V(VIS))
     m.move('b', '#0', V(VISDIV))
@@ -500,7 +519,8 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     m.move('w', V(VDP_CTRL), 'd0')                       # ack
     m.move('b', '#$40', '$A10003')
     m.word(0x4E71); m.word(0x4E71)
-    m.move('b', '$A10003', 'd2')                         # B,C
+    m.move('b', '$A10003', 'd2')                         # Up,Down,Left,Right,B,C
+    m.word(0x1C02)                                       # move.b d2,d6
     m.move('b', '#$00', '$A10003')
     m.word(0x4E71); m.word(0x4E71)
     m.move('b', '$A10003', 'd3')                         # A,Start
@@ -516,6 +536,12 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     m.word(0x4604)                                       # not.b d4
     m.word(0xC404)                                       # and.b d4,d2  (new presses)
     m.word(0x1A02)                                       # move.b d2,d5
+    m.word(0x4606)                                       # not.b d6
+    m.word(0x0206); m.word(0x000C)                       # andi.b #$0C,d6  (Left=4, Right=8)
+    m.move('b', V(PREVLR), 'd4')
+    m.move('b', 'd6', V(PREVLR))
+    m.word(0x4604)                                       # not.b d4
+    m.word(0xCC04)                                       # and.b d4,d6  (new presses)
     # bit0=B bit1=C bit2=A bit3=Start
     m.move('b', V(STATE), 'd0')
     m.word(0x0805); m.word(3)                            # btst #3,d2   Start
@@ -549,10 +575,60 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     CALL('draw_loop')
     m.label('p4')
     m.word(0x0805); m.word(1)                            # btst #1,d2   C = visualizer
-    m.beq('tick')
+    m.beq('seekchk')
     m.word(0x0A39); m.word(1); m.long(VIS)               # eori.b #1,VIS
     CALL('draw_visflag')
     CALL('clear_vis')
+    # ---- LEFT / RIGHT: seek 5 seconds (not while stopped)
+    m.label('seekchk')
+    m.word(0x0C39); m.word(2); m.long(STATE)             # cmpi.b #2,STATE
+    m.beq('tick')
+    m.word(0x0806); m.word(2)                            # btst #2,d6   Left
+    m.bne('sk_left')
+    m.word(0x0806); m.word(3)                            # btst #3,d6   Right
+    m.beq('tick')
+    m.moveq(16, 7)
+    m.bra('sk_go')
+    m.label('sk_left')
+    m.moveq(0, 7)
+    m.label('sk_go')
+    m.move('l', V(TBLPTR), 'd0')
+    m.word(0x0480); m.long(ui_addr + 16)                 # subi.l #ui+16,d0
+    m.word(0xE888)                                       # lsr.l #4,d0   -> current second
+    m.word(0xEB88)                                       # lsl.l #5,d0   -> 32 bytes per second
+    m.lea('seektab', 1)
+    m.word(0xD3C0)                                       # adda.l d0,a1
+    m.word(0xD3C7)                                       # adda.l d7,a1  (left 0 / right 16)
+    m.move('w', '(a1)+', 'd1')                           # bank, $FFFF = nothing to do
+    m.word(0x0C41); m.word(0xFFFF)                       # cmpi.w #$FFFF,d1
+    m.beq('tick')
+    m.move('w', '(a1)+', 'd3')                           # target second
+    m.move('l', '(a1)+', 'd4')                           # TBLPTR for it
+    m.move('l', '(a1)+', 'd5')                           # VISPTR for it
+    m.move('w', '#$100', '$A11100')
+    m.label('skw')
+    m.word(0x0839); m.word(0); m.long(0xA11100)
+    m.bne('skw')
+    m.move('b', 'd1', V(0xA01FFB))                       # bank to jump to
+    m.move('b', V(STATE), V(0xA01FFA))                   # command to resume with
+    m.move('b', '#3', V(CMD))                            # 3 = seek
+    m.move('w', '#0', '$A11100')
+    CALL('rewind_ui')                                    # clears bar + LEDs
+    m.move('w', 'd3', 'd0')
+    m.beq('sk_nobar')
+    m.word(0x5340)                                       # subq.w #1,d0
+    m.lea(V(ui_addr + 16), 2)
+    m.label('sk_bl')
+    m.word(0x23EA); m.word(10); m.long(VDP_CTRL)         # move.l 10(a2),VDP_CTRL
+    m.word(0x33EA); m.word(14); m.long(VDP_DATA)         # move.w 14(a2),VDP_DATA
+    m.word(0xD4FC); m.word(16)                           # adda.w #16,a2
+    m.dbra(0, 'sk_bl')
+    m.label('sk_nobar')
+    m.word(0x2044)                                       # movea.l d4,a0
+    m.word(0x90FC); m.word(16)                           # suba.w #16,a0
+    CALL('draw_entry')
+    m.move('l', 'd4', V(TBLPTR))
+    m.move('l', 'd5', V(VISPTR))
     m.label('tick')
     m.word(0x4A39); m.long(STATE)                        # tst.b STATE
     m.bne('vdone')                                       # only while playing
@@ -686,7 +762,27 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     return m
 
 
-def build_rom(samples, title, total_secs, info, zprog, vis, autoplay=False):
+def md_seek_table(total, seek, ui_addr, vis_base):
+    """Per current second k: a 16-byte entry for LEFT and one for RIGHT:
+    bank word ($FFFF = nothing), target second word, new TBLPTR, new VISPTR, pad."""
+    out = bytearray()
+    for k in range(total + 1):
+        for delta in (-5, 5):
+            t = k + delta
+            if seek is None or t < 0 and k == 0 or t >= total:
+                out += struct.pack('>HHIII', 0xFFFF, 0, 0, 0, 0)
+                continue
+            t = max(t, 0)
+            spb = seek['secs_per_bank']
+            n = max(0, min(seek['nbanks'] - 1, int(round(t / spb))))
+            sec = min(total - 1, int(round(n * spb)))
+            out += struct.pack('>HHIII', seek['start_bank'] + n, sec,
+                               ui_addr + 16 * (sec + 1),
+                               vis_base + sec * VIS_FPS * VIS_BARS, 0)
+    return bytes(out)
+
+
+def build_rom(samples, title, total_secs, info, zprog, vis, autoplay=False, seek=None):
     # --- non-code blobs, all below DATA_OFF
     tiles = md_tiles()
     pal = struct.pack('>16H', 0x0400, 0x0EEE, 0x00E0, 0x0666, 0x00EE, 0x000E,
@@ -701,7 +797,7 @@ def build_rom(samples, title, total_secs, info, zprog, vis, autoplay=False):
              ('vdpregs', regs), ('tmap', tmap), ('labels', labels),
              ('flags', md_flag_labels()), ('vistiles', md_vis_tiles()),
              ('zeros', bytes(VIS_BARS)), ('blanks', bytes([9] * VIS_BARS)),
-             ('ui', ui))
+             ('ui', ui), ('seektab', bytes((total_secs + 1) * 32)))
     vis_base = DATA_OFF + len(samples)
 
     code_org = 0x200
@@ -719,6 +815,8 @@ def build_rom(samples, title, total_secs, info, zprog, vis, autoplay=False):
     m = build_68k(code_org, len(zprog), addr['ui'], len(tiles) // 2, autoplay,
                   vis_base)
     m.lab.update({k: v for k, v in addr.items() if k != 'ui'})
+    blobs = [(n_, md_seek_table(total_secs, seek, addr['ui'], vis_base) if n_ == 'seektab' else b_)
+             for n_, b_ in blobs]
     m.lab['lflags'] = addr['flags']
     m.lab['vflags'] = addr['flags'] + 32
     code = m.finish()
@@ -897,8 +995,10 @@ def main():
     else:
         info = '%d HZ  8BIT DAC' % int(round(real))
         zprog = build_z80(start_bank, last_bank, pad)
+    spb = (SAMPLES_PER_BANK if args.stereo else BANK) / float(per_ch)
+    seek = dict(start_bank=start_bank, nbanks=nb, secs_per_bank=spb)
     rom = build_rom(bytes(data), title.upper(), total, info, zprog, vis,
-                    args.autoplay)
+                    args.autoplay, seek)
     open(args.rom, 'wb').write(rom)
     print('wrote %s (%d KB, %d s)' % (args.rom, len(rom) // 1024, total))
     if args.wav:

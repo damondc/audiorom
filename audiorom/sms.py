@@ -218,6 +218,7 @@ def tilemap(title, total, info, head=('SEGA MASTER SYSTEM', 'AUDIO PLAYER')):
     for i, t in enumerate(mmss_tiles(total)):
         m[TIME_ROW][TIME_COL + 8 + i] = t
     put(21, info)
+    put(24, 'LEFT/RIGHT = SEEK 5 SEC')
     b = bytearray()
     for row in m:
         for t in row:
@@ -239,13 +240,15 @@ def ui_table(total):
 
 FIXED = 98                                 # cycles of the loop minus the pad
 BANKVAR, UIPOS = 0xC000, 0xC001
+PREVJ, EIGHTH = 0xC003, 0xC004             # pad edge detection, 1/8 s counter
 CODE_MAX = 0x400
 PAL = bytes((0x10, 0x3F, 0x0C, 0x15, 0x0F, 0x3C, 0x03, 0x30) + (0x10,) * 8) * 2
 PAL = PAL[:16] + bytes([0x10]) + PAL[17:32]  # border colour = background
 
 
 def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_len,
-               pal_addr, map_addr, ntiles_bytes):
+               pal_addr, map_addr, ntiles_bytes, pagetab_addr, k_pages, npages):
+    per_tick = per_sec // 8                   # pad is polled 8 times a second
     a = Asm(0)
     # reset / interrupt vectors
     a.db(0xF3, 0xED, 0x56)                    # di ; im 1
@@ -294,8 +297,10 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0x3E, 0x40, 0xD3, 0xBF, 0x3E, 0x81, 0xD3, 0xBF)
     a.db(0x21); a.w(ui_addr + 8)              # ld hl,uitable+8
     a.db(0x22); a.w(UIPOS)                    # ld (UIPOS),hl
+    a.db(0xAF, 0x32); a.w(PREVJ)              # xor a ; ld (PREVJ),a
+    a.db(0x3E, 8, 0x32); a.w(EIGHTH)          # ld a,8 ; ld (EIGHTH),a
     a.db(0x21); a.w(0x8000)                   # ld hl,$8000
-    a.db(0x01); a.w(per_sec)                  # ld bc,per_sec
+    a.db(0x01); a.w(per_tick)                 # ld bc,per_tick
 
     # ---- the sample loop: every path through is cycle-counted ----
     a.label('s')
@@ -320,8 +325,69 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0x26, 0x80)                          # ld h,$80
     a.jr(0x18, 'back')
 
-    a.label('tick')                           # once per second: update UI
+    a.label('tick')                           # 8 times a second: pad, and every 8th: UI
     a.db(0xE5)                                # push hl
+    a.db(0xDB, 0xDC)                          # in a,($DC)
+    a.db(0x2F, 0xE6, 0x0C, 0x47)              # cpl ; and $0C ; ld b,a  (Left=4, Right=8)
+    a.db(0x3A); a.w(PREVJ)                    # ld a,(PREVJ)
+    a.db(0x2F, 0xA0, 0x4F)                    # cpl ; and b ; ld c,a    (new presses)
+    a.db(0x78, 0x32); a.w(PREVJ)              # ld a,b ; ld (PREVJ),a
+    a.db(0x79, 0xB7)                          # ld a,c ; or a
+    a.jr(0x28, 'nosk')
+    a.db(0x3A); a.w(BANKVAR)                  # current page
+    a.db(0xD6, DATA_BANK0)
+    a.db(0xCB, 0x51)                          # bit 2,c   Left?
+    a.jr(0x28, 'sk_r')
+    a.db(0xD6, k_pages)                       # sub K
+    a.jr(0x30, 'sk_go')
+    a.db(0xAF)                                # xor a  (clamp at the start)
+    a.jr(0x18, 'sk_go')
+    a.label('sk_r')
+    a.db(0xC6, k_pages)                       # add a,K
+    a.db(0xFE, npages)                        # cp NPAGES
+    a.jr(0x30, 'nosk')                        # past the end: ignore
+    a.label('sk_go')
+    a.db(0x57)                                # ld d,a
+    a.db(0xC6, DATA_BANK0)                    # add a,DATA_BANK0
+    a.db(0x32); a.w(BANKVAR)
+    a.db(0x32); a.w(0xFFFF)                   # map the page
+    a.db(0x6A, 0x26, 0x00)                    # ld l,d ; ld h,0
+    a.db(0x5A, 0x16, 0x00)                    # ld e,d ; ld d,0
+    a.db(0x29, 0x19)                          # add hl,hl ; add hl,de   (3 bytes per page)
+    a.db(0x11); a.w(pagetab_addr)
+    a.db(0x19)                                # add hl,de
+    a.db(0x5E, 0x23, 0x56, 0x23, 0x7E)        # ld e,(hl);inc hl;ld d,(hl);inc hl;ld a,(hl)
+    a.db(0x4F, 0x47)                          # ld c,a ; ld b,a   (filled cells)
+    a.db(0x21); a.w(0x8000)                   # ld hl,$8000
+    a.db(0xE3)                                # ex (sp),hl   saved hl := $8000
+    ba0 = 0x3800 + (BAR_ROW * 32 + BAR_COL0) * 2
+    a.db(0x3E, ba0 & 0xFF, 0xD3, 0xBF, 0x3E, 0x40 | ba0 >> 8, 0xD3, 0xBF)
+    a.db(0x78, 0xB7)                          # ld a,b ; or a
+    a.jr(0x28, 'sk_e')
+    a.label('sk_f')
+    a.db(0x3E, 64, 0xD3, 0xBE, 0xAF, 0xD3, 0xBE)
+    a.jr(0x10, 'sk_f')
+    a.label('sk_e')
+    a.db(0x3E, BAR_LEN, 0x91)                 # ld a,BAR_LEN ; sub c
+    a.jr(0x28, 'sk_d')
+    a.db(0x47)                                # ld b,a
+    a.label('sk_g')
+    a.db(0x3E, 65, 0xD3, 0xBE, 0xAF, 0xD3, 0xBE)
+    a.jr(0x10, 'sk_g')
+    a.label('sk_d')
+    a.db(0xEB)                                # ex de,hl  (entry for the new second)
+    a.db(0x3E, 8, 0x32); a.w(EIGHTH)
+    a.jr(0x18, 'wr')
+
+    a.label('nosk')
+    a.db(0x3A); a.w(EIGHTH)                   # ld a,(EIGHTH)
+    a.db(0x3D, 0x32); a.w(EIGHTH)             # dec a ; ld (EIGHTH),a
+    a.jr(0x28, 'second')                      # jr z,second
+    a.db(0xE1)                                # pop hl
+    a.db(0x01); a.w(per_tick)
+    a.abs(0xC3, 's')
+    a.label('second')
+    a.db(0x3E, 8, 0x32); a.w(EIGHTH)
     a.db(0x2A); a.w(UIPOS)                    # ld hl,(UIPOS)
     a.db(0x7E, 0xFE, 0xFF)                    # ld a,(hl) ; cp $FF
     a.jr(0x20, 'wr')
@@ -350,7 +416,7 @@ def build_code(vols, rate, per_sec, cyc_pad_n, nops, ui_addr, tiles_addr, tiles_
     a.db(0x7E, 0x23, 0xD3, 0xBE, 0xAF, 0xD3, 0xBE, 0x23)
     a.db(0x22); a.w(UIPOS)                    # ld (UIPOS),hl
     a.db(0xE1)                                # pop hl
-    a.db(0x01); a.w(per_sec)                  # ld bc,per_sec
+    a.db(0x01); a.w(per_tick)                 # ld bc,per_tick
     a.abs(0xC3, 's')                          # jp s
 
     a.label('copy')                           # hl=src bc=len -> VDP data
@@ -422,10 +488,17 @@ def main():
     pal_addr = 0x4000 + len(b1); b1 += PAL
     map_addr = 0x4000 + len(b1); b1 += tilemap(title, secs, info)
     ui_addr = 0x4000 + len(b1); b1 += ui_table(secs)
+    npages = (len(data) + BANK_SIZE - 1) // BANK_SIZE
+    k_pages = max(1, int(round(5 * per_sec * 2 / BANK_SIZE)))
+    pagetab_addr = 0x4000 + len(b1)
+    for pg in range(npages):                      # per page: UI entry address, filled cells
+        sec = max(0, min(secs - 1, int(round(pg * BANK_SIZE / (2.0 * per_sec)))))
+        b1 += struct.pack('<HB', ui_addr + 8 * sec, sec * BAR_LEN // max(secs, 1))
     assert len(b1) < 0x3FF0, 'song too long for UI table'
 
     code = build_code(start_state(), real_rate, per_sec, n, nops, ui_addr, tiles_addr,
-                      len(tiles), pal_addr, map_addr, len(tiles))
+                      len(tiles), pal_addr, map_addr, len(tiles),
+                      pagetab_addr, k_pages, npages)
     bank0 = bytearray(BANK_SIZE)
     bank0[:len(code)] = code
 
