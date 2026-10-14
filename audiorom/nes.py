@@ -23,7 +23,8 @@ MAX_BANKS = 256             # UxROM, 4 MB (NES 2.0 header)
 MAX_RATE = 16000            # cycle budget for the UI slots caps the rate
 C_MIN = 112                 # CPU cycles per sample at the highest rate
 VIS_FPS = 30
-VIS_BARS = 16
+VIS_BARS = 8                # bars; each is one tile wide with a blank tile between
+VIS_SPAN = 2 * VIS_BARS
 VIS_ROWS = 8
 
 
@@ -339,7 +340,7 @@ def make_nametable(title, total_secs, info, head):
     centre(27, 'B=STOP A=LOOP SELECT=VISUAL')
     # LED colour zones: attribute quadrants are 2x2 tiles
     for ar in (ROW_VIS // 4, ROW_VIS // 4 + 1):
-        for ac in range(COL_VIS // 4, COL_VIS // 4 + VIS_BARS // 4):
+        for ac in range(COL_VIS // 4, COL_VIS // 4 + VIS_SPAN // 4):
             if ar == ROW_VIS // 4:
                 q = (1 << 0 | 1 << 2) | (2 << 4 | 2 << 6)       # rows 0-1 red, 2-3 yellow
             else:
@@ -486,16 +487,16 @@ def build_fixed(cyc, sp, vp, nbanks, autoplay, nt, bar_px, vis_on, extra, phases
         vad = nt_addr(ROW_VIS, COL_VIS)
 
         ncol = VIS_BARS // phases
-        sh_lo = {4: 2, 8: 3}[ncol]            # log2(columns per frame)
+        sh_lo = {2: 1, 4: 2, 8: 3}[ncol]      # log2(bars per frame)
         sh_b = sh_lo - 1                      # byte offset per phase = ncol/2
 
         for j in range(ncol):
             def col_a(j=j):
                 a.lda('#%d' % (vad >> 8)); a.sta(PPUADDR)
                 a.lda('FC'); a.and_('#%d' % (phases - 1))
-                for _ in range(sh_lo):
+                for _ in range(sh_lo + 1):          # bars sit two columns apart
                     a.asl('a')
-                a.clc(); a.adc('#%d' % ((vad & 255) + j)); a.sta(PPUADDR)
+                a.clc(); a.adc('#%d' % ((vad & 255) + 2 * j)); a.sta(PPUADDR)
                 a.lda('FC'); a.and_('#%d' % (phases - 1))
                 for _ in range(sh_b):
                     a.asl('a')
@@ -692,7 +693,7 @@ def build_fixed(cyc, sp, vp, nbanks, autoplay, nt, bar_px, vis_on, extra, phases
     tab('TRANS', tr)
     tab('NEXTK', bytes([(k + 1) % BAR_LEN for k in range(BAR_LEN)] + [0] * 4))
     tab('VMT', bytes([0, 0, 0, 0, 0, 0xFF, 0xFF, 0]))
-    tab('VADV', bytes([0, 0, 0, 0, 0, 8, 0, 0]))       # 30 vis frames/s
+    tab('VADV', bytes([0, 0, 0, 0, 0, 4, 0, 0]))       # 30 vis frames/s
     tab('LBLTAB', b'STOPPED PLAYING PAUSED  ')
     tab('LFTAB', b'LOOP OFFLOOP ON ')
     tab('VFTAB', b'VIS OFF VIS ON  ')
@@ -720,7 +721,7 @@ def build_rom(samples, rate_cyc, title, total_secs, info_line, vis, autoplay=Fal
               head=('NINTENDO ENTERTAINMENT SYSTEM', 'AUDIO PLAYER')):
     real_rate = CPU_HZ / float(rate_cyc)
     n = len(samples)
-    # vis pages per bank: enough 30 fps frames (8 bytes each) for one bank's playtime
+    # vis pages per bank: enough 30 fps frames (4 bytes each) for one bank's playtime
     if vis is not None:
         per_bank_nominal = BANK                      # upper bound, refined below
         vp = 0
@@ -728,7 +729,7 @@ def build_rom(samples, rate_cyc, title, total_secs, info_line, vis, autoplay=Fal
             sp = 64 - vp
             secs = sp * 256 / real_rate
             frames = int(math.ceil(secs * VIS_FPS)) + 3
-            if frames * 8 <= vp * 256:
+            if frames * 4 <= vp * 256:
                 break
         else:
             raise SystemExit('rate too low for visualizer data')
@@ -747,11 +748,11 @@ def build_rom(samples, rate_cyc, title, total_secs, info_line, vis, autoplay=Fal
         prg[b * BANK:b * BANK + len(chunk)] = chunk
         if vis is not None:
             g0 = int(round(b * per * VIS_FPS / real_rate))
-            for f in range(vp * 32):
+            for f in range(vp * 64):
                 g = g0 + f
                 row = vis[g * VIS_BARS:(g + 1) * VIS_BARS] if (g + 1) * VIS_BARS <= len(vis) else bytes(VIS_BARS)
-                off = b * BANK + per + f * 8
-                for k in range(8):
+                off = b * BANK + per + f * 4
+                for k in range(VIS_BARS // 2):
                     prg[off + k] = (row[2 * k] << 4) | row[2 * k + 1]
     bar_px = [min(BAR_LEN * 8 - 1, b * BAR_LEN * 8 // max(nb, 1)) for b in range(nb)]
     nt = make_nametable(title, total_secs, info_line, head)
@@ -764,13 +765,13 @@ def build_rom(samples, rate_cyc, title, total_secs, info_line, vis, autoplay=Fal
     extra = dict(time=time,
                  fwd=[b + step if b + step < nb else b for b in range(nb)],
                  back=[max(0, b - step) for b in range(nb)])
-    for phases in (2, 4):
+    for phases in (1, 2):
         try:
             fixed, finfo = build_fixed(rate_cyc, sp, vp, nb, autoplay, nt, bar_px,
                                        vis is not None, extra, phases)
             break
         except AssertionError as e:
-            if phases == 4 or vis is None or 'vblank' not in str(e):
+            if phases == 2 or vis is None or 'vblank' not in str(e):
                 raise
     finfo['phases'] = phases
     prg[(tot - 1) * BANK:] = fixed

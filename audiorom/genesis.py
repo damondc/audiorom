@@ -25,8 +25,8 @@ LOOP, VIS, VISDIV, VISPTR = RAM + 10, RAM + 11, RAM + 12, RAM + 14
 PREVLR = RAM + 18                         # left/right edge detection
 CMD = 0xA01FFD                            # command byte in Z80 RAM (0 play, 1 pause, 2 stop)
 LOOPF = 0xA01FFC                          # loop flag in Z80 RAM
-VIS_BARS, VIS_ROWS, VIS_FPS = 16, 8, 30
-VIS_ROW0 = 5                              # top tile row of the LED bars
+VIS_BARS, VIS_ROWS, VIS_FPS = 8, 8, 30     # 8 bars on every console
+VIS_ROW0, VIS_COL0 = 5, 8                 # top tile row / first column of the LED bars
 VDP_CTRL, VDP_DATA, PSG = 0xC00004, 0xC00000, 0xC00011
 
 # ---------------------------------------------------------------- 68000 asm
@@ -365,7 +365,7 @@ def md_vis_tiles():
 
 
 def compute_vis(pcm, rate, secs):
-    """16 log-spaced band levels (0..8) per 1/30 s, for the LED bars."""
+    """VIS_BARS log-spaced band levels (0..8) per 1/30 s, for the LED bars."""
     import operator
     mul = operator.mul
     n = VIS_BARS
@@ -705,7 +705,7 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     # ---- LED bars: a0 -> 16 height bytes (0..8); a0 advances 16
     m.label('draw_vis')
     m.move('w', '#$8F40', V(VDP_CTRL))                   # auto-increment 64 = one tile row
-    m.move('l', '#$%X' % ctrl(0xC000 + (VIS_ROW0 * 32) * 2), 'd2')
+    m.move('l', '#$%X' % ctrl(0xC000 + (VIS_ROW0 * 32 + VIS_COL0) * 2), 'd2')
     m.moveq(VIS_BARS - 1, 1)
     m.label('dv')
     m.moveq(0, 0)

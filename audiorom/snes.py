@@ -20,7 +20,7 @@ from audiorom import sms
 DSP_RATE = 32000            # pitch $1000
 T0_HZ = 8000                # SPC700 timer 0 base rate
 VIS_FPS = 30
-VIS_BARS = 16
+VIS_BARS = 8
 VIS_ROWS = 8
 RING_BLOCKS = 1024          # 9 KB BRR ring in ARAM
 RING = 0x0600
@@ -1040,15 +1040,15 @@ def build_code(P):
     a.lda('#$FF'); a.bra('vmd')
     a.lbl('vm0'); a.lda('#0')
     a.lbl('vmd'); a.sta('VMASK')
-    a.rep('#$20'); a.lda('FRAME'); a.and_('#$1FFF'); a.asl('a'); a.asl('a'); a.asl('a')
+    a.rep('#$20'); a.lda('FRAME'); a.and_('#$1FFF'); a.asl('a'); a.asl('a')
     a.tax(); a.sep('#$20')
     for k in range(VIS_BARS // 2):
         a.lda('@VISBASE+%d,x' % k); a.sta('TMPB')
         a.phx()
         a.lsr('a'); a.lsr('a'); a.lsr('a'); a.lsr('a'); a.and_('VMASK')
-        a.ldy('#%d' % (cell(ROW_VIS, COL_VIS) - BUFB + 2 * (2 * k))); a.jsr('draw_col')
+        a.ldy('#%d' % (cell(ROW_VIS, COL_VIS) - BUFB + 4 * (2 * k))); a.jsr('draw_col')
         a.lda('TMPB'); a.and_('#$0F'); a.and_('VMASK')
-        a.ldy('#%d' % (cell(ROW_VIS, COL_VIS) - BUFB + 2 * (2 * k + 1))); a.jsr('draw_col')
+        a.ldy('#%d' % (cell(ROW_VIS, COL_VIS) - BUFB + 4 * (2 * k + 1))); a.jsr('draw_col')
         a.plx()
     a.lbl('vis_end')
     a.lda('#1'); a.sta('PENDING')
@@ -1134,7 +1134,7 @@ def make_tilemap(title, total_secs, info, head):
     centre(27, 'B=STOP A=LOOP SELECT=VISUAL')
     for r in range(VIS_ROWS):
         pal = 1 if r < 2 else (2 if r < 4 else 3)
-        for c in range(VIS_BARS):
+        for c in range(2 * VIS_BARS):
             cells[(ROW_VIS + r) * 32 + COL_VIS + c] = T_SPACE | (pal << 10)
     return b''.join(struct.pack('<H', c) for c in cells)
 
@@ -1163,10 +1163,10 @@ def build_rom(stream, vis_rows, title, total_secs, info, t0_div, pitch, vis_fps,
     rom = bytearray(full)
     rom[0x8000:0x8000 + len(code)] = code
     # vis table: 8 bytes per frame, 4-bit heights
-    vt = bytearray(VIS_FRAMES * 8)
+    vt = bytearray(VIS_FRAMES * 4)
     for f, row in enumerate(vis_rows[:VIS_FRAMES]):
-        for k in range(8):
-            vt[f * 8 + k] = (row[2 * k] << 4) | row[2 * k + 1]
+        for k in range(VIS_BARS // 2):
+            vt[f * 4 + k] = (row[2 * k] << 4) | row[2 * k + 1]
     rom[0x10000:0x10000 + len(vt)] = vt
     rom[0x20000:0x20000 + len(stream)] = stream
     h = 0xFFC0

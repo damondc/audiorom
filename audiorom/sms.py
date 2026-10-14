@@ -856,13 +856,14 @@ def main():
     if led:
         from audiorom.genesis import compute_vis
         print('computing LED-bar levels ...')
-        lv = compute_vis(list(pcm), per_sec, secs + 1)          # 16 bands, 30 fps
-        nfr30 = len(lv) // 16
+        from audiorom.genesis import VIS_BARS as NB
+        lv = compute_vis(list(pcm), per_sec, secs + 1)          # NB bands, 30 fps
+        nfr30 = len(lv) // NB
         for j in range(int(secs * VIS_FPS) + 8):
             f = min(nfr30 - 1, int(round(j * 30.0 / VIS_FPS)))
-            row = lv[f * 16:f * 16 + 16]
-            hs = [min(8, max(row[2 * b], row[2 * b + 1])) for b in range(VIS_BANDS)]
-            vis += bytes((hs[2 * k] << 4) | hs[2 * k + 1] for k in range(4))
+            row = lv[f * NB:f * NB + NB]
+            hs = [min(8, row[b]) for b in range(VIS_BANDS)]
+            vis += bytes((hs[2 * k] << 4) | hs[2 * k + 1] for k in range(VIS_BANDS // 2))
         vis += bytes(16)
         assert VISTAB + len(vis) <= BANK_SIZE, 'song too long for the LED table'
 
