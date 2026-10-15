@@ -305,7 +305,7 @@ def make_chr():
     return bytes(pt) + bytes(0x1000)              # pattern table 1 unused
 
 
-PALETTE = bytes([0x0F, 0x30, 0x10, 0x2A,          # text / progress bar (colour 3 = green fill)
+PALETTE = bytes([0x0F, 0x30, 0x00, 0x2A,          # text / progress bar (colour 3 = green fill)
                  0x0F, 0x16, 0x06, 0x00,          # red LEDs
                  0x0F, 0x28, 0x18, 0x00,          # yellow
                  0x0F, 0x2A, 0x1A, 0x00]) * 2     # green
