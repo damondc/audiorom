@@ -1235,7 +1235,7 @@ def main():
     vis = compute_vis(list(pcm), rate, int(math.ceil(secs)) + 2)
     step = VIS_FPS // vis_fps
     rows = [vis[i:i + VIS_BARS] for i in range(0, len(vis), VIS_BARS)][::step]
-    info = '%d HZ  BRR  MONO' % rate
+    info = '%d HZ  4BIT BRR' % rate
     rom, fi = build_rom(stream, rows, title, secs, info, n, pitch, vis_fps, args.autoplay)
     with open(args.rom, 'wb') as f:
         f.write(rom)

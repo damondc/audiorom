@@ -827,7 +827,7 @@ def main():
         from audiorom.genesis import compute_vis
         print('computing LED-bar levels ...')
         vis = compute_vis(list(pcm), rate, int(math.ceil(secs)) + 2)
-    info = '%d HZ  7-BIT  MONO' % rate
+    info = '%d HZ  7BIT DAC' % rate
     rom, fi = build_rom(q, cyc, title, secs, info, vis, args.autoplay)
     with open(args.rom, 'wb') as f:
         f.write(rom)
