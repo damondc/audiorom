@@ -215,9 +215,9 @@ def tilemap(title, total, info, head=('SMS AUDIO PLAYER', '')):
         c = (32 - len(text)) // 2 if col is None else col
         for i, ch in enumerate(text):
             m[row][c + i] = ch_tile(ch)
-    put(2, head[0])
+    put(1, head[0])
     put(2, head[1])
-    put(4, title[:28])
+    put(3, title[:28])
     for i in range(BAR_LEN):
         m[S_BAR_ROW][BAR_COL0 + i] = 65
     for i, t in enumerate(mmss_tiles(0)):
@@ -228,10 +228,10 @@ def tilemap(title, total, info, head=('SMS AUDIO PLAYER', '')):
     put(ROW_STATE, 'STOPPED ', COL_STATE)
     put(ROW_FLAGS, 'LOOP OFF', COL_LOOP)
     put(ROW_FLAGS, 'VIS ON  ', COL_VISF)
-    put(5, info)
-    put(24, 'BUTTON 1: PLAY/PAUSE  2X: STOP')
-    put(25, 'BUTTON 2: LOOP  2X: VISUAL')
-    put(26, 'LEFT/RIGHT = SEEK 5 SEC')
+    put(4, info)
+    put(21, 'BUTTON 1: PLAY/PAUSE  2X: STOP')
+    put(22, 'BUTTON 2: LOOP  2X: VISUAL')
+    put(23, 'LEFT/RIGHT = SEEK 5 SEC')
     b = bytearray()
     for row in m:
         for t in row:
@@ -261,10 +261,10 @@ CODE_MAX = 0x1000
 CELLTAB = 0x1000                           # 64 LED cells x 4 bytes, page aligned
 VISTAB = 0x1100                            # LED band levels, 4 bytes per frame
 CUR, NEWP, EVENT, SECF, TR, VR, RC = 0xC018, 0xC019, 0xC01A, 0xC01B, 0xC01C, 0xC01D, 0xC01E
-VIS_COL0, VIS_ROW0, VIS_BANDS, VIS_ROWS, VIS_FPS = 8, 7, 8, 8, 16
+VIS_COL0, VIS_ROW0, VIS_BANDS, VIS_ROWS, VIS_FPS = 8, 6, 8, 8, 16
 LED0 = 66                                  # LED tiles 66..73 (level 1..8)
-S_BAR_ROW, S_TIME_ROW = 16, 18
-ROW_STATE, COL_STATE, ROW_FLAGS, COL_LOOP, COL_VISF = 20, 12, 21, 6, 18
+S_BAR_ROW, S_TIME_ROW = 15, 17
+ROW_STATE, COL_STATE, ROW_FLAGS, COL_LOOP, COL_VISF = 19, 12, 20, 6, 18
 PAL = bytes((0x00, 0x3F, 0x0C, 0x15, 0x0F, 0x3C, 0x03, 0x30) + (0x00,) * 8) * 2
 PAL = PAL[:16] + bytes([0x00]) + PAL[17:32]  # border colour = background
 
