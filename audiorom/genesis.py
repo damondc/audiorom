@@ -29,7 +29,7 @@ PREVLR = RAM + 18                         # left/right edge detection
 CMD = 0xA01FFD                            # command byte in Z80 RAM (0 play, 1 pause, 2 stop)
 LOOPF = 0xA01FFC                          # loop flag in Z80 RAM
 VIS_BARS, VIS_ROWS, VIS_FPS = 8, 8, 30     # 8 bars on every console
-VIS_ROW0, VIS_COL0 = 5, 8                 # top tile row / first column of the LED bars
+VIS_ROW0, VIS_COL0 = 6, 8                 # top tile row / first column of the LED bars
 VDP_CTRL, VDP_DATA, PSG = 0xC00004, 0xC00000, 0xC00011
 
 # ---------------------------------------------------------------- 68000 asm
@@ -321,8 +321,8 @@ def md_tilemap(title, total, info):
         c = (32 - len(text)) // 2 if col is None else col
         for i, ch in enumerate(text):
             w[row * 32 + c + i] = sms.ch_tile(ch)
-    put(0, 'GENESIS AUDIO PLAYER')
-    put(2, title[:30])
+    put(1, 'GENESIS AUDIO PLAYER')
+    put(3, title[:30])
     for i in range(sms.BAR_LEN):
         w[sms.BAR_ROW * 32 + sms.BAR_COL0 + i] = 65
     for i, t in enumerate(sms.mmss_tiles(0)):
@@ -330,7 +330,7 @@ def md_tilemap(title, total, info):
     put(sms.TIME_ROW, ' / ', sms.TIME_COL + 5)
     for i, t in enumerate(sms.mmss_tiles(total)):
         w[sms.TIME_ROW * 32 + sms.TIME_COL + 8 + i] = t
-    put(3, info)
+    put(4, info)
     put(24, 'START=PLAY/PAUSE')
     put(25, 'LEFT/RIGHT=SEEK 5 SEC')
     put(26, 'A=STOP  B=LOOP  C=VISUAL')
@@ -740,14 +740,14 @@ def build_68k(org, zlen, ui_addr, tiles_words, autoplay, vis_base):
     m.word(0xE948)                                       # lsl.w #4,d0
     m.lea('labels', 0)
     m.word(0xD0C0)                                       # adda.w d0,a0
-    la = 0xC000 + (18 * 32 + 12) * 2
+    la = 0xC000 + (19 * 32 + 12) * 2
     m.move('l', '#$%X' % ctrl(la), V(VDP_CTRL))
     for _ in range(8):
         m.move('w', '(a0)+', V(VDP_DATA))
     m.word(0x4E75)
 
-    for name, var, lbl, row, col in (('draw_loop', LOOP, 'lflags', 20, 6),
-                                     ('draw_visflag', VIS, 'vflags', 20, 18)):
+    for name, var, lbl, row, col in (('draw_loop', LOOP, 'lflags', 21, 6),
+                                     ('draw_visflag', VIS, 'vflags', 21, 18)):
         m.label(name)
         m.move('b', V(var), 'd0')
         m.word(0x0240); m.word(1)                        # andi.w #1,d0

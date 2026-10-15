@@ -194,7 +194,7 @@ def tiles_4bpp(font):
             t += bytes((0, m if col & 2 else 0, m if col & 4 else 0, 0))
     return bytes(t)
 
-BAR_COL0, BAR_LEN, BAR_ROW, TIME_ROW, TIME_COL = 2, 28, 14, 16, 9
+BAR_COL0, BAR_LEN, BAR_ROW, TIME_ROW, TIME_COL = 2, 28, 15, 17, 9
 
 def ch_tile(c):
     o = ord(c.upper())
