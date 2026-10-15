@@ -1086,9 +1086,10 @@ def make_chr():
     for n in range(8):
         m = (0xFF << (8 - n)) & 0xFF
         p0 = bytes(m if 2 <= r < 6 else 0 for r in range(8))
-        p1 = bytes((~m & 0xFF) if 2 <= r < 6 else 0 for r in range(8))
+        p1 = bytes(0xFF if 2 <= r < 6 else 0 for r in range(8))
         tl[T_PART0 + n] = t2(p0, p1)
-    tl[T_FULL] = t2(bytes(0xFF if 2 <= r < 6 else 0 for r in range(8)), bytes(8))
+    tl[T_FULL] = t2(bytes(0xFF if 2 <= r < 6 else 0 for r in range(8)),
+                    bytes(0xFF if 2 <= r < 6 else 0 for r in range(8)))
     tl[T_LED] = t2(bytes(0x7E if 1 <= r < 7 else 0 for r in range(8)), bytes(8))
     return b''.join(tl)
 
@@ -1098,7 +1099,7 @@ def rgb(r, g, b):
 
 
 def make_palette():
-    cols = [0, rgb(31, 31, 31), rgb(13, 13, 13), 0,       # 0 text / bar
+    cols = [0, rgb(31, 31, 31), rgb(13, 13, 13), rgb(4, 28, 4),  # 0 text / bar (3 = green fill)
             0, rgb(31, 2, 2), 0, 0,                       # 1 red LEDs
             0, rgb(31, 26, 0), 0, 0,                      # 2 yellow
             0, rgb(4, 28, 4), 0, 0]                       # 3 green

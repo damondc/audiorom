@@ -291,11 +291,12 @@ def make_chr():
         t = bytearray(16)
         for r in range(2, 6):
             t[r] = m
-            t[8 + r] = ~m & 0xFF                  # colour 2 for the unfilled part
+            t[8 + r] = 0xFF                       # filled = colour 3 (green), unfilled = colour 2
         pt[(T_PART0 + n) * 16:(T_PART0 + n) * 16 + 16] = t
     t = bytearray(16)
     for r in range(2, 6):
         t[r] = 0xFF
+        t[8 + r] = 0xFF
     pt[T_FULL * 16:T_FULL * 16 + 16] = t
     t = bytearray(16)
     for r in range(1, 7):
@@ -304,7 +305,7 @@ def make_chr():
     return bytes(pt) + bytes(0x1000)              # pattern table 1 unused
 
 
-PALETTE = bytes([0x0F, 0x30, 0x10, 0x00,          # text / progress bar
+PALETTE = bytes([0x0F, 0x30, 0x10, 0x2A,          # text / progress bar (colour 3 = green fill)
                  0x0F, 0x16, 0x06, 0x00,          # red LEDs
                  0x0F, 0x28, 0x18, 0x00,          # yellow
                  0x0F, 0x2A, 0x1A, 0x00]) * 2     # green
