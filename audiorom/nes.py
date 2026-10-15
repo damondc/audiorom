@@ -719,7 +719,7 @@ def build_fixed(cyc, sp, vp, nbanks, autoplay, nt, bar_px, vis_on, extra, phases
 
 
 def build_rom(samples, rate_cyc, title, total_secs, info_line, vis, autoplay=False,
-              head=('NINTENDO ENTERTAINMENT SYSTEM', 'AUDIO PLAYER')):
+              head=('NES AUDIO PLAYER', '')):
     real_rate = CPU_HZ / float(rate_cyc)
     n = len(samples)
     # vis pages per bank: enough 30 fps frames (4 bytes each) for one bank's playtime

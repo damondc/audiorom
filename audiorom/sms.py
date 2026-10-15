@@ -207,7 +207,7 @@ def mmss_tiles(sec):
     return [16 + m // 10, 16 + m % 10, ch_tile(':'), 16 + s // 10, 16 + s % 10]
 
 
-def tilemap(title, total, info, head=('SEGA MASTER SYSTEM', 'AUDIO PLAYER')):
+def tilemap(title, total, info, head=('SMS AUDIO PLAYER', '')):
     m = [[0] * 32 for _ in range(28)]
 
     def put(row, text, col=None):
@@ -215,7 +215,7 @@ def tilemap(title, total, info, head=('SEGA MASTER SYSTEM', 'AUDIO PLAYER')):
         c = (32 - len(text)) // 2 if col is None else col
         for i, ch in enumerate(text):
             m[row][c + i] = ch_tile(ch)
-    put(1, head[0])
+    put(2, head[0])
     put(2, head[1])
     put(4, title[:28])
     for i in range(BAR_LEN):

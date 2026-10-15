@@ -1144,7 +1144,7 @@ def make_tilemap(title, total_secs, info, head):
 # ROM
 # ---------------------------------------------------------------------------
 def build_rom(stream, vis_rows, title, total_secs, info, t0_div, pitch, vis_fps,
-              autoplay=False, head=('SUPER NINTENDO', 'AUDIO PLAYER')):
+              autoplay=False, head=('SNES AUDIO PLAYER', '')):
     assert len(stream) % 9 == 0
     spc, entry = build_spc(t0_div, pitch, vis_fps)
     spc = bytearray(spc)

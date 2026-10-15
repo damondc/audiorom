@@ -321,7 +321,7 @@ def md_tilemap(title, total, info):
         c = (32 - len(text)) // 2 if col is None else col
         for i, ch in enumerate(text):
             w[row * 32 + c + i] = sms.ch_tile(ch)
-    put(0, 'SEGA GENESIS AUDIO PLAYER')
+    put(0, 'GENESIS AUDIO PLAYER')
     put(2, title[:30])
     for i in range(sms.BAR_LEN):
         w[sms.BAR_ROW * 32 + sms.BAR_COL0 + i] = 65
