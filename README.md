@@ -45,6 +45,19 @@ default rate is 11025 Hz; above about 12.9 kHz the bars are left out.
 | toggle LED-bar visualizer | C | SELECT |
 | seek back / forward 5 s | LEFT / RIGHT | LEFT / RIGHT |
 
+## Screenshots
+
+Each player about a third of the way through a three-minute song, LED
+visualizer on.
+
+| Master System | Genesis |
+|:-:|:-:|
+| ![Master System](docs/sms.png) | ![Genesis](docs/genesis.png) |
+
+| NES | SNES |
+|:-:|:-:|
+| ![NES](docs/nes.png) | ![SNES](docs/snes.png) |
+
 ## Notes
 
 * The assemblers (Z80, 68000, 6502, 65816, SPC700) and the BRR encoder are built in; there is no external toolchain.
