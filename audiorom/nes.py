@@ -289,12 +289,12 @@ def make_chr():
     for n in range(8):                            # partial progress tiles
         m = (0xFF << (8 - n)) & 0xFF
         t = bytearray(16)
-        for r in range(2, 6):
+        for r in range(1, 7):                     # filled part: thick, colour 3 (green)
             t[r] = m
-            t[8 + r] = 0xFF                       # filled = colour 3 (green), unfilled = colour 2
+            t[8 + r] = 0xFF if r in (3, 4) else m  # unfilled part: thin line, colour 2
         pt[(T_PART0 + n) * 16:(T_PART0 + n) * 16 + 16] = t
     t = bytearray(16)
-    for r in range(2, 6):
+    for r in range(1, 7):
         t[r] = 0xFF
         t[8 + r] = 0xFF
     pt[T_FULL * 16:T_FULL * 16 + 16] = t

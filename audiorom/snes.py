@@ -1085,11 +1085,11 @@ def make_chr():
         tl[c] = t2(font(c), bytes(8))
     for n in range(8):
         m = (0xFF << (8 - n)) & 0xFF
-        p0 = bytes(m if 2 <= r < 6 else 0 for r in range(8))
-        p1 = bytes(0xFF if 2 <= r < 6 else 0 for r in range(8))
+        p0 = bytes(m if 1 <= r < 7 else 0 for r in range(8))
+        p1 = bytes((0xFF if r in (3, 4) else m) if 1 <= r < 7 else 0 for r in range(8))
         tl[T_PART0 + n] = t2(p0, p1)
-    tl[T_FULL] = t2(bytes(0xFF if 2 <= r < 6 else 0 for r in range(8)),
-                    bytes(0xFF if 2 <= r < 6 else 0 for r in range(8)))
+    tl[T_FULL] = t2(bytes(0xFF if 1 <= r < 7 else 0 for r in range(8)),
+                    bytes(0xFF if 1 <= r < 7 else 0 for r in range(8)))
     tl[T_LED] = t2(bytes(0x7E if 1 <= r < 7 else 0 for r in range(8)), bytes(8))
     return b''.join(tl)
 
