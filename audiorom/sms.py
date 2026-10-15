@@ -217,8 +217,7 @@ def tilemap(title, total, info, head=('SEGA MASTER SYSTEM', 'AUDIO PLAYER')):
             m[row][c + i] = ch_tile(ch)
     put(1, head[0])
     put(2, head[1])
-    put(4, 'NOW PLAYING')
-    put(5, title[:28])
+    put(4, title[:28])
     for i in range(BAR_LEN):
         m[S_BAR_ROW][BAR_COL0 + i] = 65
     for i, t in enumerate(mmss_tiles(0)):
@@ -229,7 +228,7 @@ def tilemap(title, total, info, head=('SEGA MASTER SYSTEM', 'AUDIO PLAYER')):
     put(ROW_STATE, 'STOPPED ', COL_STATE)
     put(ROW_FLAGS, 'LOOP OFF', COL_LOOP)
     put(ROW_FLAGS, 'VIS ON  ', COL_VISF)
-    put(23, info)
+    put(5, info)
     put(24, 'BUTTON 1: PLAY/PAUSE  2X: STOP')
     put(25, 'BUTTON 2: LOOP  2X: VISUAL')
     put(26, 'LEFT/RIGHT = SEEK 5 SEC')

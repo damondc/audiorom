@@ -321,8 +321,8 @@ def md_tilemap(title, total, info):
         c = (32 - len(text)) // 2 if col is None else col
         for i, ch in enumerate(text):
             w[row * 32 + c + i] = sms.ch_tile(ch)
-    put(1, 'SEGA GENESIS AUDIO PLAYER')
-    put(3, title[:30])
+    put(0, 'SEGA GENESIS AUDIO PLAYER')
+    put(2, title[:30])
     for i in range(sms.BAR_LEN):
         w[sms.BAR_ROW * 32 + sms.BAR_COL0 + i] = 65
     for i, t in enumerate(sms.mmss_tiles(0)):
@@ -330,7 +330,7 @@ def md_tilemap(title, total, info):
     put(sms.TIME_ROW, ' / ', sms.TIME_COL + 5)
     for i, t in enumerate(sms.mmss_tiles(total)):
         w[sms.TIME_ROW * 32 + sms.TIME_COL + 8 + i] = t
-    put(22, info)
+    put(3, info)
     put(24, 'START=PLAY/PAUSE')
     put(25, 'LEFT/RIGHT=SEEK 5 SEC')
     put(26, 'A=STOP  B=LOOP  C=VISUAL')
