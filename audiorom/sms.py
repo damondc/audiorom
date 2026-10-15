@@ -263,8 +263,8 @@ VIS_COL0, VIS_ROW0, VIS_BANDS, VIS_ROWS, VIS_FPS = 8, 7, 8, 8, 16
 LED0 = 66                                  # LED tiles 66..73 (level 1..8)
 S_BAR_ROW, S_TIME_ROW = 16, 18
 ROW_STATE, COL_STATE, ROW_FLAGS, COL_LOOP, COL_VISF = 20, 12, 21, 6, 18
-PAL = bytes((0x10, 0x3F, 0x0C, 0x15, 0x0F, 0x3C, 0x03, 0x30) + (0x10,) * 8) * 2
-PAL = PAL[:16] + bytes([0x10]) + PAL[17:32]  # border colour = background
+PAL = bytes((0x00, 0x3F, 0x0C, 0x15, 0x0F, 0x3C, 0x03, 0x30) + (0x00,) * 8) * 2
+PAL = PAL[:16] + bytes([0x00]) + PAL[17:32]  # border colour = background
 
 
 def cell_table():

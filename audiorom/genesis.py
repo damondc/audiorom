@@ -785,8 +785,8 @@ def md_seek_table(total, seek, ui_addr, vis_base):
 def build_rom(samples, title, total_secs, info, zprog, vis, autoplay=False, seek=None):
     # --- non-code blobs, all below DATA_OFF
     tiles = md_tiles()
-    pal = struct.pack('>16H', 0x0400, 0x0EEE, 0x00E0, 0x0666, 0x00EE, 0x000E,
-                      0x0422, *([0x0400] * 9))
+    pal = struct.pack('>16H', 0x0000, 0x0EEE, 0x00E0, 0x0666, 0x00EE, 0x000E,
+                      0x0222, *([0x0000] * 9))
     regs = struct.pack('>19H', 0x8004, 0x8104, 0x8230, 0x8334, 0x8407, 0x8578,
                        0x8600, 0x8700, 0x8800, 0x8900, 0x8A00, 0x8B00, 0x8C00,
                        0x8D3F, 0x8E00, 0x8F02, 0x9000, 0x9100, 0x9200)
