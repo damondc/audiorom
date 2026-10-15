@@ -10,8 +10,9 @@ vblank.  Needs ffmpeg; the 6502 assembler is built in.
 
     audiorom nes song.mp3 song.nes [--rate 16000] [--title NAME] [--autoplay]
 
-Controls: START play/pause, B stop+rewind, A loop on/off, SELECT visualizer
-(A and B are swapped relative to the Genesis player, as on Nintendo pads).
+Controls: START play/pause, B stop+rewind, A loop on/off, SELECT visualizer,
+LEFT/RIGHT seek 5 s (A and B are swapped relative to the Genesis player, as
+on Nintendo pads).
 """
 import argparse, array, bisect, math, os, re, struct, sys
 

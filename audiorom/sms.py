@@ -9,6 +9,9 @@ assembly (assembled here by a tiny built-in assembler), so no external
 toolchain is needed beyond ffmpeg.
 
     audiorom sms song.mp3 song.sms [--rate 11025] [--title NAME]
+
+Controls (two buttons, so double presses): button 1 play/pause, double stop;
+button 2 loop on/off, double visualizer; LEFT/RIGHT seek 5 s.
 """
 import argparse, array, bisect, gzip, math, os, struct, subprocess, sys, wave
 

@@ -11,7 +11,8 @@ SPC700 assemblers are built in.
 
     audiorom snes song.mp3 song.sfc [--rate 32000] [--title NAME] [--autoplay]
 
-Controls: START play/pause, B stop+rewind, A loop on/off, SELECT visualizer.
+Controls: START play/pause, B stop+rewind, A loop on/off, SELECT visualizer,
+LEFT/RIGHT seek 5 s.
 """
 import argparse, array, math, os, re, struct, sys
 

@@ -7,6 +7,9 @@ runs the on-screen UI from the vblank interrupt.  Needs ffmpeg; the Z80 and
 68000 assemblers are built in.
 
     audiorom genesis song.mp3 song.md [--rate 22050] [--title NAME]
+
+Controls: START play/pause, A stop+rewind, B loop on/off, C visualizer,
+LEFT/RIGHT seek 5 s.
 """
 import argparse, array, math, os, re, struct, subprocess, sys, wave
 
@@ -889,7 +892,7 @@ def main():
     ap.add_argument('--dac-gain', type=float, default=0.383,
                     help='scale of the DAC (L-R) path against the PSG path')
     ap.add_argument('--autoplay', action='store_true',
-                    help='start playing at power-on instead of waiting for A/Start')
+                    help='start playing at power-on instead of waiting for Start')
     ap.add_argument('--wav')
     args = ap.parse_args()
 

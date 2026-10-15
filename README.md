@@ -15,12 +15,14 @@ through whatever the chip offers.
 
 Requires Python 3 and `ffmpeg` on `PATH`. No other dependencies.
 
-    bin/audiorom sms     song.mp3 song.sms     [--rate 8000] [--title NAME]
+    bin/audiorom sms     song.mp3 song.sms     [--rate 11025] [--title NAME]
     bin/audiorom genesis song.mp3 song.md      [--rate 22050] [--stereo] [--autoplay]
     bin/audiorom nes     song.mp3 song.nes     [--rate 16000] [--autoplay] [--no-vis]
     bin/audiorom snes    song.mp3 song.sfc     [--rate 32000] [--autoplay]
 
-`--rate 0` (default) picks the highest sample rate that fits the cartridge.
+Without `--rate`, Genesis, NES and SNES pick the highest sample rate that fits the cartridge
+(SMS defaults to 11025 Hz). `--autoplay` starts playback at power-on; otherwise the player
+waits stopped. `--start` and `--duration` (seconds) use part of the input.
 `--gain` sets loudness boost in dB before a peak limiter. Run
 `bin/audiorom <system> -h` for all options.
 
@@ -34,7 +36,7 @@ The Master System player has two buttons, so it uses double presses:
 | 2 | loop on / off | LED visualizer on / off |
 | D-pad LEFT / RIGHT | seek 5 s back / forward | |
 
-It waits stopped at power-on. Its LED bars need spare CPU cycles, so the
+Its LED bars need spare CPU cycles, so the
 default rate is 11025 Hz; above about 12.9 kHz the bars are left out.
 
 | action | Genesis | NES / SNES |
